@@ -7,7 +7,7 @@ use std::time::Duration as TimeDuration;
 use ansi_term::Color::{Purple, Yellow};
 use chrono::{DateTime, Duration, Utc};
 use futures::{future, FutureExt};
-use log::{debug, error, info, warn};
+use log::{debug, error, info, warn, trace};
 use rand::{thread_rng, Rng};
 
 use near_chain::types::BlockSyncResponse;
@@ -94,6 +94,8 @@ impl HeaderSync {
         highest_height: BlockHeight,
         highest_height_peers: &Vec<FullPeerInfo>,
     ) -> Result<(), near_chain::Error> {
+        trace!(target: "sync", "Start header sync. sync_status {:?} highest height: {:?} highest height peers:{:?}", sync_status, highest_height, highest_height_peers);
+
         let header_head = chain.header_head()?;
         if !self.header_sync_due(sync_status, &header_head) {
             return Ok(());

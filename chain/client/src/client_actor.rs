@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 
 use actix::{Actor, Addr, AsyncContext, Context, Handler};
 use chrono::{DateTime, Utc};
-use log::{debug, error, info, warn};
+use log::{debug, error, info, warn, trace};
 
 #[cfg(feature = "adversarial")]
 use near_chain::check_refcount_map;
@@ -998,6 +998,7 @@ impl ClientActor {
 
     /// Main syncing job responsible for syncing client with other peers.
     fn sync(&mut self, ctx: &mut Context<ClientActor>) {
+        trace!(target: "sync", "Main sync function. Status: {:?}", self.client.sync_status);
         // Macro to schedule to call this function later if error occurred.
         macro_rules! unwrap_or_run_later(($obj: expr) => (match $obj {
             Ok(v) => v,
@@ -1014,6 +1015,8 @@ impl ClientActor {
 
         let currently_syncing = self.client.sync_status.is_syncing();
         let (needs_syncing, highest_height) = unwrap_or_run_later!(self.syncing_info());
+
+        trace!(target: "sync", "Currently syncing: {} Needs syncing: {:?} Height height: {}", currently_syncing, needs_syncing, highest_height);
 
         if !self.needs_syncing(needs_syncing) {
             if currently_syncing {
