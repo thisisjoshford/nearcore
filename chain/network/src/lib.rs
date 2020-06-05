@@ -1,5 +1,8 @@
 #[macro_use]
 extern crate lazy_static;
+extern crate strum;
+#[macro_use]
+extern crate strum_macros;
 
 pub use peer_manager::PeerManagerActor;
 pub use types::{
