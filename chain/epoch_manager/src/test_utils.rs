@@ -111,8 +111,9 @@ pub fn epoch_info_with_num_seats(
         validator_reward,
         validator_kickout,
         minted_amount,
-        protocol_version: PROTOCOL_VERSION,
         seat_price,
+        accounts_to_shard: vec![AccountId::default()],
+        protocol_version: PROTOCOL_VERSION,
     }
 }
 

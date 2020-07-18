@@ -209,6 +209,7 @@ pub fn proposals_to_epoch_info(
         minted_amount,
         seat_price: threshold,
         protocol_version: next_version,
+        accounts_to_shard: vec![AccountId::default()],
     })
 }
 

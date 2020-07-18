@@ -136,9 +136,19 @@ pub struct EpochInfo {
     pub minted_amount: Balance,
     /// Seat price of this epoch.
     pub seat_price: Balance,
+    /// Distribution of accounts between shards in this epoch.
+    /// Each account is the first one in the shard.
+    /// Size of `accounts_to_shard` is guaranteed to be equal to number of shards in this epoch.
+    pub accounts_to_shard: Vec<AccountId>,
     /// Current protocol version during this epoch.
     #[default(PROTOCOL_VERSION)]
     pub protocol_version: ProtocolVersion,
+}
+
+impl EpochInfo {
+    pub fn num_shards(&self) -> NumShards {
+        self.accounts_to_shard.len() as NumShards
+    }
 }
 
 pub struct EpochSummary {

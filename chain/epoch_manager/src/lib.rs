@@ -1177,6 +1177,8 @@ impl EpochManager {
         self.epoch_info_aggregator = Some(aggregator);
         Ok(())
     }
+
+    pub fn get_num_shards(&mut self) {}
 }
 
 #[cfg(test)]
