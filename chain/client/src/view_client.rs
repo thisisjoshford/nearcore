@@ -191,7 +191,7 @@ impl ViewClientActor {
         };
         let shard_id = self
             .runtime_adapter
-            .account_id_to_shard_id(account_id, &header.hash())
+            .account_id_to_shard_id(account_id, &header.prev_hash())
             .map_err(|e| e.to_string())?;
 
         // If we have state for the shard that we query return query result directly.

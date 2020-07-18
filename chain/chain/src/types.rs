@@ -261,8 +261,8 @@ pub trait RuntimeAdapter: Send + Sync {
         account_id: &AccountId,
     ) -> Result<(ValidatorStake, bool), Error>;
 
-    /// Get number of shards for current block.
-    fn num_shards(&self, block_hash: &CryptoHash) -> Result<NumShards, Error>;
+    /// Get number of shards for prev block.
+    fn num_shards(&self, prev_block_hash: &CryptoHash) -> Result<NumShards, Error>;
 
     fn num_total_parts(&self) -> usize;
 
@@ -272,13 +272,13 @@ pub trait RuntimeAdapter: Send + Sync {
     fn account_id_to_shard_id(
         &self,
         account_id: &AccountId,
-        block_hash: &CryptoHash,
+        prev_block_hash: &CryptoHash,
     ) -> Result<ShardId, Error>;
 
     fn state_record_to_shard_id(
         &self,
         state_record: &StateRecord,
-        block_hash: &CryptoHash,
+        prev_block_hash: &CryptoHash,
     ) -> Result<ShardId, Error>;
 
     /// Returns `account_id` that suppose to have the `part_id` of all chunks given previous block hash.

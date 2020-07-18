@@ -1103,7 +1103,9 @@ impl Chain {
     {
         near_metrics::inc_counter(&metrics::BLOCK_PROCESSED_TOTAL);
 
-        if block.chunks().len() != self.runtime_adapter.num_shards(block.hash())? as usize {
+        if block.chunks().len()
+            != self.runtime_adapter.num_shards(block.header().prev_hash())? as usize
+        {
             return Err(ErrorKind::IncorrectNumberOfChunkHeaders.into());
         }
 
@@ -3195,7 +3197,9 @@ impl<'a> ChainUpdate<'a> {
             }
         }
 
-        if header.chunk_mask().len() as u64 != self.runtime_adapter.num_shards(header.hash())? {
+        if header.chunk_mask().len() as u64
+            != self.runtime_adapter.num_shards(header.prev_hash())?
+        {
             return Err(ErrorKind::InvalidChunkMask.into());
         }
 

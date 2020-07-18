@@ -208,8 +208,11 @@ pub fn proposals_to_epoch_info(
         fishermen_to_index,
         minted_amount,
         seat_price: threshold,
+        accounts_to_shard: vec![
+            AccountId::default();
+            epoch_config.num_block_producer_seats_per_shard.len()
+        ],
         protocol_version: next_version,
-        accounts_to_shard: vec![AccountId::default()],
     })
 }
 

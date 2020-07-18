@@ -1,15 +1,12 @@
 use std::collections::{HashMap, HashSet};
-use std::io::Cursor;
 use std::sync::{Arc, RwLock};
 
-use byteorder::{LittleEndian, ReadBytesExt};
 use log::info;
 
 use near_epoch_manager::EpochManager;
-use near_primitives::epoch_manager::EpochInfo;
 use near_primitives::errors::EpochError;
-use near_primitives::hash::{hash, CryptoHash};
-use near_primitives::types::{AccountId, EpochId, NumShards, ShardId};
+use near_primitives::hash::CryptoHash;
+use near_primitives::types::{AccountId, EpochId, ShardId};
 
 const POISONED_LOCK_ERR: &str = "The lock was poisoned.";
 
@@ -39,15 +36,15 @@ impl ShardTracker {
     pub fn new(
         accounts: Vec<AccountId>,
         shards: Vec<ShardId>,
+        prev_block_hash: CryptoHash,
         epoch_id: EpochId,
         epoch_manager: Arc<RwLock<EpochManager>>,
     ) -> Self {
-        let epoch_manager_clone = epoch_manager.clone();
-        let mut epoch_manager_deref =
-            epoch_manager_clone.as_ref().write().expect(POISONED_LOCK_ERR);
-        let epoch_info = epoch_manager_deref.get_epoch_info(&epoch_id).unwrap().clone();
         let tracked_accounts = accounts.into_iter().fold(HashMap::new(), |mut acc, x| {
-            let shard_id = Self::account_id_to_shard_id_inner(&epoch_manager, &x, &epoch_info);
+            let shard_id = {
+                let mut epoch_manager = epoch_manager.write().expect(POISONED_LOCK_ERR);
+                epoch_manager.account_id_to_shard_id(&x, &prev_block_hash).unwrap()
+            };
             acc.entry(shard_id).or_insert_with(HashSet::new).insert(x);
             acc
         });
@@ -68,41 +65,13 @@ impl ShardTracker {
         }
     }
 
-    fn account_id_to_shard_id_inner(
-        _epoch_manager: &Arc<RwLock<EpochManager>>,
-        account_id: &AccountId,
-        epoch_info: &EpochInfo,
-    ) -> ShardId {
-        // TODO use epoch_manager to access the store
-        let num_shards = epoch_info.num_shards();
-        let mut cursor = Cursor::new((hash(&account_id.clone().into_bytes()).0).0);
-        cursor.read_u64::<LittleEndian>().expect("Must not happened") % (num_shards)
-    }
-
-    pub fn account_id_to_shard_id(
-        &self,
-        account_id: &AccountId,
-        block_hash: &CryptoHash,
-    ) -> Result<ShardId, EpochError> {
-        let mut epoch_manager_deref = self.epoch_manager.as_ref().write().expect(POISONED_LOCK_ERR);
-        let epoch_id = epoch_manager_deref.get_epoch_id(block_hash)?.clone();
-        let epoch_info = epoch_manager_deref.get_epoch_info(&epoch_id)?;
-        Ok(Self::account_id_to_shard_id_inner(&self.epoch_manager, account_id, epoch_info))
-    }
-
-    pub fn num_shards(&self, block_hash: &CryptoHash) -> Result<NumShards, EpochError> {
-        let mut epoch_manager_deref = self.epoch_manager.as_ref().write().expect(POISONED_LOCK_ERR);
-        let epoch_id = epoch_manager_deref.get_epoch_id(block_hash)?.clone();
-        let epoch_info = epoch_manager_deref.get_epoch_info(&epoch_id)?;
-        Ok(epoch_info.num_shards())
-    }
-
     fn track_account(
         &mut self,
         account_id: &AccountId,
-        block_hash: &CryptoHash,
+        prev_block_hash: &CryptoHash,
     ) -> Result<(), EpochError> {
-        let shard_id = self.account_id_to_shard_id(account_id, block_hash)?;
+        let mut epoch_manager = self.epoch_manager.write().expect(POISONED_LOCK_ERR);
+        let shard_id = epoch_manager.account_id_to_shard_id(account_id, prev_block_hash)?;
         self.tracked_accounts
             .entry(shard_id)
             .or_insert_with(HashSet::new)
@@ -115,9 +84,9 @@ impl ShardTracker {
     /// even if we want to start tracking the accounts in the next epoch, it cannot harm
     /// us to start tracking them earlier.
     #[allow(unused)]
-    pub fn track_accounts(&mut self, account_ids: &[AccountId], block_hash: &CryptoHash) {
+    pub fn track_accounts(&mut self, account_ids: &[AccountId], prev_block_hash: &CryptoHash) {
         for account_id in account_ids.iter() {
-            self.track_account(account_id, block_hash);
+            self.track_account(account_id, prev_block_hash);
         }
     }
 
@@ -134,10 +103,11 @@ impl ShardTracker {
         }
     }
 
-    fn flush_pending(&mut self, block_hash: &CryptoHash) -> Result<(), EpochError> {
+    fn flush_pending(&mut self, prev_block_hash: &CryptoHash) -> Result<(), EpochError> {
+        let mut epoch_manager = self.epoch_manager.write().expect(POISONED_LOCK_ERR);
         let mut shards_to_remove = HashSet::new();
         for account_id in self.pending_untracked_accounts.iter() {
-            let shard_id = self.account_id_to_shard_id(&account_id, block_hash)?;
+            let shard_id = epoch_manager.account_id_to_shard_id(&account_id, prev_block_hash)?;
             self.tracked_accounts.entry(shard_id).and_modify(|e| {
                 e.remove(account_id);
             });
@@ -349,15 +319,26 @@ mod tests {
     fn test_track_new_accounts_and_shards() {
         let num_shards = 4;
         let epoch_manager = get_epoch_manager(num_shards);
-        let mut tracker = ShardTracker::new(vec![], vec![], EpochId::default(), epoch_manager);
+        let mut tracker = ShardTracker::new(
+            vec![],
+            vec![],
+            CryptoHash::default(),
+            EpochId::default(),
+            epoch_manager.clone(),
+        );
         tracker.track_accounts(&["test1".to_string(), "test2".to_string()], &CryptoHash::default());
         tracker.track_shards(&[2, 3]);
+        let mut epoch_manager = epoch_manager.write().expect(POISONED_LOCK_ERR);
         let mut total_tracked_shards = HashSet::new();
         total_tracked_shards.insert(
-            tracker.account_id_to_shard_id(&"test1".to_string(), &CryptoHash::default()).unwrap(),
+            epoch_manager
+                .account_id_to_shard_id(&"test1".to_string(), &CryptoHash::default())
+                .unwrap(),
         );
         total_tracked_shards.insert(
-            tracker.account_id_to_shard_id(&"test2".to_string(), &CryptoHash::default()).unwrap(),
+            epoch_manager
+                .account_id_to_shard_id(&"test2".to_string(), &CryptoHash::default())
+                .unwrap(),
         );
         total_tracked_shards.insert(2);
         total_tracked_shards.insert(3);
@@ -368,8 +349,13 @@ mod tests {
     fn test_untrack_accounts() {
         let num_shards = 4;
         let epoch_manager = get_epoch_manager(num_shards);
-        let mut tracker =
-            ShardTracker::new(vec![], vec![], EpochId::default(), epoch_manager.clone());
+        let mut tracker = ShardTracker::new(
+            vec![],
+            vec![],
+            CryptoHash::default(),
+            EpochId::default(),
+            epoch_manager.clone(),
+        );
         tracker.track_accounts(
             &["test1".to_string(), "test2".to_string(), "test3".to_string()],
             &CryptoHash::default(),
@@ -387,8 +373,11 @@ mod tests {
         tracker.update_epoch(&hash(&[2])).unwrap();
 
         let mut total_tracked_shards = HashSet::new();
+        let mut epoch_manager = epoch_manager.write().expect(POISONED_LOCK_ERR);
         total_tracked_shards.insert(
-            tracker.account_id_to_shard_id(&"test1".to_string(), &CryptoHash::default()).unwrap(),
+            epoch_manager
+                .account_id_to_shard_id(&"test1".to_string(), &CryptoHash::default())
+                .unwrap(),
         );
         total_tracked_shards.insert(2);
         total_tracked_shards.insert(3);
@@ -400,8 +389,13 @@ mod tests {
     fn test_untrack_shards() {
         let num_shards = 4;
         let epoch_manager = get_epoch_manager(num_shards);
-        let mut tracker =
-            ShardTracker::new(vec![], vec![], EpochId::default(), epoch_manager.clone());
+        let mut tracker = ShardTracker::new(
+            vec![],
+            vec![],
+            CryptoHash::default(),
+            EpochId::default(),
+            epoch_manager.clone(),
+        );
         tracker.track_accounts(
             &["test1".to_string(), "test2".to_string(), "test3".to_string()],
             &CryptoHash::default(),
@@ -416,10 +410,11 @@ mod tests {
         tracker.untrack_shards(&hash(&[1]), vec![1, 2, 3]).unwrap();
         tracker.update_epoch(&hash(&[2])).unwrap();
 
+        let mut epoch_manager = epoch_manager.write().expect(POISONED_LOCK_ERR);
         let mut total_tracked_shards = HashSet::new();
         for account_id in vec!["test1", "test2", "test3"] {
             total_tracked_shards.insert(
-                tracker
+                epoch_manager
                     .account_id_to_shard_id(&account_id.to_string(), &CryptoHash::default())
                     .unwrap(),
             );

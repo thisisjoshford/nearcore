@@ -1,7 +1,9 @@
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::io::Cursor;
 use std::sync::Arc;
 
+use byteorder::{LittleEndian, ReadBytesExt};
 use cached::{Cached, SizedCache};
 use log::{debug, warn};
 use primitive_types::U256;
@@ -10,10 +12,10 @@ use near_primitives::epoch_manager::{
     BlockInfo, EpochConfig, EpochInfo, EpochSummary, SlashState, AGGREGATOR_KEY,
 };
 use near_primitives::errors::EpochError;
-use near_primitives::hash::CryptoHash;
+use near_primitives::hash::{hash, CryptoHash};
 use near_primitives::types::{
-    AccountId, ApprovalStake, Balance, BlockChunkValidatorStats, BlockHeight, EpochId, ShardId,
-    ValidatorId, ValidatorKickoutReason, ValidatorStake, ValidatorStats,
+    AccountId, ApprovalStake, Balance, BlockChunkValidatorStats, BlockHeight, EpochId, NumShards,
+    ShardId, ValidatorId, ValidatorKickoutReason, ValidatorStake, ValidatorStats,
 };
 use near_primitives::version::ProtocolVersion;
 use near_primitives::views::{
@@ -99,6 +101,21 @@ impl EpochManager {
             store_update.commit()?;
         }
         Ok(epoch_manager)
+    }
+
+    pub fn account_id_to_shard_id(
+        &mut self,
+        account_id: &AccountId,
+        prev_block_hash: &CryptoHash,
+    ) -> Result<ShardId, EpochError> {
+        let num_shards = self.num_shards(prev_block_hash)?;
+        let mut cursor = Cursor::new((hash(&account_id.clone().into_bytes()).0).0);
+        Ok(cursor.read_u64::<LittleEndian>().expect("Must not happened") % (num_shards))
+    }
+
+    pub fn num_shards(&mut self, prev_block_hash: &CryptoHash) -> Result<NumShards, EpochError> {
+        let epoch_id = self.get_epoch_id_from_prev_block(prev_block_hash)?;
+        Ok(self.get_epoch_info(&epoch_id)?.num_shards())
     }
 
     /// # Parameters
@@ -1177,8 +1194,6 @@ impl EpochManager {
         self.epoch_info_aggregator = Some(aggregator);
         Ok(())
     }
-
-    pub fn get_num_shards(&mut self) {}
 }
 
 #[cfg(test)]

@@ -74,6 +74,7 @@ pub fn epoch_info_with_num_seats(
     minted_amount: Balance,
     num_seats: NumSeats,
 ) -> EpochInfo {
+    let num_shards = chunk_producers_settlement.len();
     let seat_price =
         find_threshold(&accounts.iter().map(|(_, s)| *s).collect::<Vec<_>>(), num_seats).unwrap();
     accounts.sort();
@@ -112,7 +113,7 @@ pub fn epoch_info_with_num_seats(
         validator_kickout,
         minted_amount,
         seat_price,
-        accounts_to_shard: vec![AccountId::default()],
+        accounts_to_shard: vec![AccountId::default(); num_shards],
         protocol_version: PROTOCOL_VERSION,
     }
 }

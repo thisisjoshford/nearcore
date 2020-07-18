@@ -192,6 +192,7 @@ impl NightshadeRuntime {
         let shard_tracker = ShardTracker::new(
             initial_tracking_accounts,
             initial_tracking_shards,
+            CryptoHash::default(),
             EpochId::default(),
             epoch_manager.clone(),
         );
@@ -312,7 +313,8 @@ impl NightshadeRuntime {
             let mut slashing_info: HashMap<_, _> = challenges_result
                 .iter()
                 .filter_map(|s| {
-                    if self.account_id_to_shard_id(&s.account_id, block_hash).unwrap() == shard_id
+                    if epoch_manager.account_id_to_shard_id(&s.account_id, prev_block_hash).unwrap()
+                        == shard_id
                         && !s.is_double_sign
                     {
                         Some((s.account_id.clone(), None))
@@ -328,19 +330,24 @@ impl NightshadeRuntime {
                 let stake_info = stake_info
                     .into_iter()
                     .filter(|(account_id, _)| {
-                        self.account_id_to_shard_id(account_id, block_hash).unwrap() == shard_id
+                        epoch_manager.account_id_to_shard_id(account_id, prev_block_hash).unwrap()
+                            == shard_id
                     })
                     .collect();
                 let validator_rewards = validator_reward
                     .into_iter()
                     .filter(|(account_id, _)| {
-                        self.account_id_to_shard_id(account_id, block_hash).unwrap() == shard_id
+                        epoch_manager.account_id_to_shard_id(account_id, prev_block_hash).unwrap()
+                            == shard_id
                     })
                     .collect();
                 let last_proposals = last_validator_proposals
                     .iter()
                     .filter(|v| {
-                        self.account_id_to_shard_id(&v.account_id, block_hash).unwrap() == shard_id
+                        epoch_manager
+                            .account_id_to_shard_id(&v.account_id, prev_block_hash)
+                            .unwrap()
+                            == shard_id
                     })
                     .fold(HashMap::new(), |mut acc, v| {
                         acc.insert(v.account_id.clone(), v.stake);
@@ -349,7 +356,8 @@ impl NightshadeRuntime {
                 let double_sign_slashing_info: HashMap<_, _> = double_sign_slashing_info
                     .into_iter()
                     .filter(|(account_id, _)| {
-                        self.account_id_to_shard_id(account_id, block_hash).unwrap() == shard_id
+                        epoch_manager.account_id_to_shard_id(account_id, prev_block_hash).unwrap()
+                            == shard_id
                     })
                     .map(|(account_id, stake)| (account_id, Some(stake)))
                     .collect();
@@ -362,7 +370,8 @@ impl NightshadeRuntime {
                         self.genesis.config.protocol_treasury_account.clone(),
                     )
                     .filter(|account_id| {
-                        self.account_id_to_shard_id(account_id, block_hash).unwrap() == shard_id
+                        epoch_manager.account_id_to_shard_id(account_id, prev_block_hash).unwrap()
+                            == shard_id
                     }),
                     slashing_info,
                 })
@@ -432,7 +441,7 @@ impl NightshadeRuntime {
         let mut receipt_result = HashMap::default();
         for receipt in apply_result.outgoing_receipts {
             receipt_result
-                .entry(self.account_id_to_shard_id(&receipt.receiver_id, &block_hash).unwrap())
+                .entry(self.account_id_to_shard_id(&receipt.receiver_id, &prev_block_hash).unwrap())
                 .or_insert_with(|| vec![])
                 .push(receipt);
         }
@@ -797,8 +806,9 @@ impl RuntimeAdapter for NightshadeRuntime {
         }
     }
 
-    fn num_shards(&self, block_hash: &CryptoHash) -> Result<NumShards, Error> {
-        self.shard_tracker.num_shards(block_hash).map_err(|e| e.into())
+    fn num_shards(&self, prev_block_hash: &CryptoHash) -> Result<NumShards, Error> {
+        let mut epoch_manager = self.epoch_manager.as_ref().write().expect(POISONED_LOCK_ERR);
+        epoch_manager.num_shards(prev_block_hash).map_err(|e| e.into())
     }
 
     fn num_total_parts(&self) -> usize {
@@ -822,15 +832,16 @@ impl RuntimeAdapter for NightshadeRuntime {
     fn account_id_to_shard_id(
         &self,
         account_id: &AccountId,
-        block_hash: &CryptoHash,
+        prev_block_hash: &CryptoHash,
     ) -> Result<ShardId, Error> {
-        self.shard_tracker.account_id_to_shard_id(account_id, block_hash).map_err(|e| e.into())
+        let mut epoch_manager = self.epoch_manager.as_ref().write().expect(POISONED_LOCK_ERR);
+        epoch_manager.account_id_to_shard_id(account_id, prev_block_hash).map_err(|e| e.into())
     }
 
     fn state_record_to_shard_id(
         &self,
         state_record: &StateRecord,
-        block_hash: &CryptoHash,
+        prev_block_hash: &CryptoHash,
     ) -> Result<ShardId, Error> {
         match &state_record {
             StateRecord::Account { account_id, .. }
@@ -838,10 +849,10 @@ impl RuntimeAdapter for NightshadeRuntime {
             | StateRecord::Contract { account_id, .. }
             | StateRecord::ReceivedData { account_id, .. }
             | StateRecord::Data { account_id, .. } => {
-                self.account_id_to_shard_id(account_id, block_hash)
+                self.account_id_to_shard_id(account_id, prev_block_hash)
             }
             StateRecord::PostponedReceipt(receipt) | StateRecord::DelayedReceipt(receipt) => {
-                self.account_id_to_shard_id(&receipt.receiver_id, block_hash)
+                self.account_id_to_shard_id(&receipt.receiver_id, prev_block_hash)
             }
         }
     }

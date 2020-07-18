@@ -382,7 +382,7 @@ impl RuntimeAdapter for KeyValueRuntime {
         Ok(validators[offset + delta].account_id.clone())
     }
 
-    fn num_shards(&self, _block_hash: &CryptoHash) -> Result<NumShards, Error> {
+    fn num_shards(&self, _prev_block_hash: &CryptoHash) -> Result<NumShards, Error> {
         Ok(self.num_shards)
     }
 
@@ -403,16 +403,16 @@ impl RuntimeAdapter for KeyValueRuntime {
     fn account_id_to_shard_id(
         &self,
         account_id: &AccountId,
-        block_hash: &CryptoHash,
+        prev_block_hash: &CryptoHash,
     ) -> Result<ShardId, Error> {
         Ok(u64::from((hash(&account_id.clone().into_bytes()).0).0[0])
-            % self.num_shards(block_hash).unwrap())
+            % self.num_shards(prev_block_hash).unwrap())
     }
 
     fn state_record_to_shard_id(
         &self,
         _state_record: &StateRecord,
-        _block_hash: &CryptoHash,
+        _prev_block_hash: &CryptoHash,
     ) -> Result<ShardId, Error> {
         unimplemented!()
     }
@@ -515,7 +515,7 @@ impl RuntimeAdapter for KeyValueRuntime {
         state_root: &StateRoot,
         _height: BlockHeight,
         _block_timestamp: u64,
-        _prev_block_hash: &CryptoHash,
+        prev_block_hash: &CryptoHash,
         block_hash: &CryptoHash,
         receipts: &[Receipt],
         transactions: &[SignedTransaction],
@@ -535,7 +535,7 @@ impl RuntimeAdapter for KeyValueRuntime {
         for receipt in receipts.iter() {
             if let ReceiptEnum::Action(action) = &receipt.receipt {
                 assert_eq!(
-                    self.account_id_to_shard_id(&receipt.receiver_id, block_hash)?,
+                    self.account_id_to_shard_id(&receipt.receiver_id, prev_block_hash)?,
                     shard_id
                 );
                 if !state.receipt_nonces.contains(&receipt.receipt_id) {
@@ -559,7 +559,7 @@ impl RuntimeAdapter for KeyValueRuntime {
 
         for transaction in transactions {
             assert_eq!(
-                self.account_id_to_shard_id(&transaction.transaction.signer_id, block_hash)?,
+                self.account_id_to_shard_id(&transaction.transaction.signer_id, prev_block_hash)?,
                 shard_id
             );
             if transaction.transaction.actions.is_empty() {
@@ -601,7 +601,7 @@ impl RuntimeAdapter for KeyValueRuntime {
         for (hash, from, to, amount, nonce) in balance_transfers {
             let mut good_to_go = false;
 
-            if self.account_id_to_shard_id(&from, block_hash)? != shard_id {
+            if self.account_id_to_shard_id(&from, prev_block_hash)? != shard_id {
                 // This is a receipt, was already debited
                 good_to_go = true;
             } else if let Some(balance) = state.amounts.get(&from) {
@@ -613,7 +613,7 @@ impl RuntimeAdapter for KeyValueRuntime {
             }
 
             if good_to_go {
-                let new_receipt_hashes = if self.account_id_to_shard_id(&to, block_hash)?
+                let new_receipt_hashes = if self.account_id_to_shard_id(&to, prev_block_hash)?
                     == shard_id
                 {
                     state.amounts.insert(to.clone(), state.amounts.get(&to).unwrap_or(&0) + amount);
@@ -635,7 +635,7 @@ impl RuntimeAdapter for KeyValueRuntime {
                     };
                     let receipt_hash = receipt.get_hash();
                     new_receipts
-                        .entry(self.account_id_to_shard_id(&receipt.receiver_id, block_hash)?)
+                        .entry(self.account_id_to_shard_id(&receipt.receiver_id, prev_block_hash)?)
                         .or_insert_with(|| vec![])
                         .push(receipt);
                     vec![receipt_hash]
