@@ -1103,11 +1103,12 @@ impl Chain {
     {
         near_metrics::inc_counter(&metrics::BLOCK_PROCESSED_TOTAL);
 
-        if block.chunks().len()
+        // TODO MOO we cannot do it here anymore
+        /*if block.chunks().len()
             != self.runtime_adapter.num_shards(block.header().prev_hash())? as usize
         {
             return Err(ErrorKind::IncorrectNumberOfChunkHeaders.into());
-        }
+        }*/
 
         let prev_head = self.store.head()?;
         let mut chain_update = ChainUpdate::new(
