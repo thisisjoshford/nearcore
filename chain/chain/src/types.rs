@@ -261,7 +261,7 @@ pub trait RuntimeAdapter: Send + Sync {
         account_id: &AccountId,
     ) -> Result<(ValidatorStake, bool), Error>;
 
-    /// Get number of shards for prev block.
+    /// Get number of shards by prev block.
     fn num_shards(&self, prev_block_hash: &CryptoHash) -> Result<NumShards, Error>;
 
     fn num_total_parts(&self) -> usize;

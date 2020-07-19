@@ -76,8 +76,8 @@ impl EpochInfoProvider for SafeEpochManager {
             return Ok(None);
         }
         let epoch_info = epoch_manager.get_epoch_info(&epoch_id)?;
-        if let Some(index) = epoch_info.validator_to_index.get(account_id) {
-            Ok(Some(epoch_info.validators[*index as usize].stake))
+        if let Some(index) = epoch_info.validator_to_index().get(account_id) {
+            Ok(Some(epoch_info.validators()[*index as usize].stake))
         } else {
             Ok(None)
         }
@@ -92,7 +92,7 @@ impl EpochInfoProvider for SafeEpochManager {
         let slashed = epoch_manager.get_slashed_validators(last_block_hash)?.clone();
         let epoch_info = epoch_manager.get_epoch_info(&epoch_id)?;
         Ok(epoch_info
-            .validators
+            .validators()
             .iter()
             .filter_map(|info| {
                 if slashed.contains_key(&info.account_id) {
@@ -214,7 +214,10 @@ impl NightshadeRuntime {
     ) -> Result<EpochHeight, Error> {
         let mut epoch_manager = self.epoch_manager.as_ref().write().expect(POISONED_LOCK_ERR);
         let epoch_id = epoch_manager.get_epoch_id_from_prev_block(prev_block_hash)?;
-        epoch_manager.get_epoch_info(&epoch_id).map(|info| info.epoch_height).map_err(Error::from)
+        epoch_manager
+            .get_epoch_info(&epoch_id)
+            .map(|info| info.epoch_height().clone())
+            .map_err(Error::from)
     }
 
     fn genesis_state_from_dump(&self) -> (Arc<Store>, StoreUpdate, Vec<StateRoot>) {
@@ -933,12 +936,12 @@ impl RuntimeAdapter for NightshadeRuntime {
 
     fn get_epoch_minted_amount(&self, epoch_id: &EpochId) -> Result<Balance, Error> {
         let mut epoch_manager = self.epoch_manager.as_ref().write().expect(POISONED_LOCK_ERR);
-        Ok(epoch_manager.get_epoch_info(epoch_id)?.minted_amount)
+        Ok(epoch_manager.get_epoch_info(epoch_id)?.minted_amount().clone())
     }
 
     fn get_epoch_protocol_version(&self, epoch_id: &EpochId) -> Result<ProtocolVersion, Error> {
         let mut epoch_manager = self.epoch_manager.as_ref().write().expect(POISONED_LOCK_ERR);
-        Ok(epoch_manager.get_epoch_info(epoch_id)?.protocol_version)
+        Ok(epoch_manager.get_epoch_info(epoch_id)?.protocol_version().clone())
     }
 
     fn add_validator_proposals(&self, block_header_info: BlockHeaderInfo) -> Result<(), Error> {
@@ -1073,7 +1076,7 @@ impl RuntimeAdapter for NightshadeRuntime {
                 let epoch_height = {
                     let mut epoch_manager =
                         self.epoch_manager.as_ref().write().expect(POISONED_LOCK_ERR);
-                    epoch_manager.get_epoch_info(&epoch_id)?.epoch_height
+                    epoch_manager.get_epoch_info(&epoch_id)?.epoch_height().clone()
                 };
                 match self.call_function(
                     shard_id,

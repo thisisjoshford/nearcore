@@ -193,7 +193,7 @@ impl BlockHeaderV1 {
     }
 }
 
-/// V1 -> V2: Remove `chunks_included` from `inner_reset`
+/// V1 -> V2: Remove `chunks_included` from `inner_rest`
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Debug, Clone, Eq, PartialEq)]
 #[borsh_init(init)]
 pub struct BlockHeaderV2 {

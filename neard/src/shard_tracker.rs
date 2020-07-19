@@ -107,7 +107,7 @@ impl ShardTracker {
         let mut epoch_manager = self.epoch_manager.write().expect(POISONED_LOCK_ERR);
         let mut shards_to_remove = HashSet::new();
         for account_id in self.pending_untracked_accounts.iter() {
-            let shard_id = epoch_manager.account_id_to_shard_id(&account_id, prev_block_hash)?;
+            let shard_id = epoch_manager.account_id_to_shard_id(account_id, prev_block_hash)?;
             self.tracked_accounts.entry(shard_id).and_modify(|e| {
                 e.remove(account_id);
             });
@@ -136,15 +136,15 @@ impl ShardTracker {
         Ok(())
     }
 
-    fn update_epoch(&mut self, block_hash: &CryptoHash) -> Result<(), EpochError> {
+    fn update_epoch(&mut self, prev_block_hash: &CryptoHash) -> Result<(), EpochError> {
         let epoch_id = {
             let mut epoch_manager = self.epoch_manager.write().expect(POISONED_LOCK_ERR);
-            epoch_manager.get_epoch_id(block_hash)?
+            epoch_manager.get_epoch_id_from_prev_block(prev_block_hash)?
         };
         if self.current_epoch_id != epoch_id {
             // if epoch id has changed, we need to flush the pending removals
             // and update the shards to track
-            self.flush_pending(block_hash)?;
+            self.flush_pending(prev_block_hash)?;
             self.current_epoch_id = epoch_id;
         }
         Ok(())
@@ -154,10 +154,10 @@ impl ShardTracker {
     #[allow(unused)]
     pub fn untrack_accounts(
         &mut self,
-        block_hash: &CryptoHash,
+        prev_block_hash: &CryptoHash,
         account_ids: Vec<AccountId>,
     ) -> Result<(), EpochError> {
-        self.update_epoch(block_hash)?;
+        self.update_epoch(prev_block_hash)?;
         for account_id in account_ids {
             self.pending_untracked_accounts.insert(account_id);
         }
@@ -168,10 +168,10 @@ impl ShardTracker {
     #[allow(unused)]
     pub fn untrack_shards(
         &mut self,
-        block_hash: &CryptoHash,
+        prev_block_hash: &CryptoHash,
         shard_ids: Vec<ShardId>,
     ) -> Result<(), EpochError> {
-        self.update_epoch(block_hash)?;
+        self.update_epoch(prev_block_hash)?;
         for shard_id in shard_ids {
             self.pending_untracked_shards.insert(shard_id);
         }

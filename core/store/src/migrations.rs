@@ -3,13 +3,15 @@ use std::collections::{HashMap, HashSet};
 
 use borsh::BorshDeserialize;
 
+use near_primitives::epoch_manager::{EpochInfo, EpochInfoV1, EpochInfoV2};
 use near_primitives::hash::CryptoHash;
+use near_primitives::sharding::ShardChunk;
 use near_primitives::transaction::ExecutionOutcomeWithIdAndProof;
+use near_primitives::types::AccountId;
 use near_primitives::version::DbVersion;
 
 use crate::db::{DBCol, RocksDB, VERSION_KEY};
 use crate::Store;
-use near_primitives::sharding::ShardChunk;
 
 pub fn get_store_version(path: &str) -> DbVersion {
     RocksDB::get_version(path).expect("Failed to open the database")
@@ -78,6 +80,51 @@ pub fn fill_col_transaction_refcount(store: &Store) {
     for (tx_hash, refcount) in tx_refcount {
         store_update
             .set_ser(DBCol::ColTransactionRefCount, tx_hash.as_ref(), &refcount)
+            .expect("BorshSerialize should not fail");
+    }
+}
+
+pub fn fill_accounts_to_shard(store: &Store) {
+    let mut store_update = store.store_update();
+    for (key, old_epoch_info) in store.iter(DBCol::ColEpochInfo).map(|(key, value)| {
+        (key, EpochInfoV1::try_from_slice(&value).expect("BorshDeserialize should not fail"))
+    }) {
+        let EpochInfoV1 {
+            epoch_height,
+            validators,
+            validator_to_index,
+            block_producers_settlement,
+            chunk_producers_settlement,
+            hidden_validators_settlement,
+            fishermen,
+            fishermen_to_index,
+            stake_change,
+            validator_reward,
+            validator_kickout,
+            minted_amount,
+            seat_price,
+            protocol_version,
+        } = old_epoch_info;
+        let num_shards = chunk_producers_settlement.len();
+        let epoch_info = EpochInfo::EpochInfoV2(Box::new(EpochInfoV2 {
+            epoch_height,
+            validators,
+            validator_to_index,
+            block_producers_settlement,
+            chunk_producers_settlement,
+            hidden_validators_settlement,
+            fishermen,
+            fishermen_to_index,
+            stake_change,
+            validator_reward,
+            validator_kickout,
+            minted_amount,
+            seat_price,
+            accounts_to_shard: vec![AccountId::default(); num_shards],
+            protocol_version,
+        }));
+        store_update
+            .set_ser(DBCol::ColEpochInfo, &key, &epoch_info)
             .expect("BorshSerialize should not fail");
     }
 }
