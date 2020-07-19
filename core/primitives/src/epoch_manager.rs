@@ -141,7 +141,6 @@ pub struct EpochInfoV1 {
     pub protocol_version: ProtocolVersion,
 }
 
-/// V1 -> V2: Add `accounts_to_shard` + `num_shards` impl
 #[derive(SmartDefault, BorshSerialize, BorshDeserialize, Serialize, Clone, Debug, PartialEq, Eq)]
 pub struct EpochInfoV2 {
     /// Ordinal of given epoch from genesis.
@@ -185,6 +184,7 @@ pub struct EpochInfoV2 {
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Clone, Debug, PartialEq, Eq)]
 pub enum EpochInfo {
     EpochInfoV1(Box<EpochInfoV1>),
+    /// V1 -> V2: Add `accounts_to_shard` + `num_shards`
     EpochInfoV2(Box<EpochInfoV2>),
 }
 
