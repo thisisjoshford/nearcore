@@ -29,8 +29,9 @@ use near_primitives::syncing::ShardStateSyncResponse;
 use near_primitives::transaction::{ExecutionOutcomeWithIdAndProof, SignedTransaction};
 use near_primitives::types::{AccountId, BlockHeight, BlockIdOrFinality, EpochId, ShardId};
 use near_primitives::utils::{from_timestamp, to_timestamp};
-use near_primitives::version::FIRST_BACKWARD_COMPATIBLE_PROTOCOL_VERSION;
+use near_primitives::version::{OLDEST_BACKWARD_COMPATIBLE_PROTOCOL_VERSION, PROTOCOL_VERSION};
 use near_primitives::views::{FinalExecutionOutcomeView, QueryRequest, QueryResponse};
+use std::io;
 
 use crate::peer::Peer;
 #[cfg(feature = "metric_recorder")]
@@ -150,8 +151,8 @@ pub enum PeerStatus {
     Banned(ReasonForBan),
 }
 
-#[derive(BorshSerialize, BorshDeserialize, Serialize, PartialEq, Eq, Clone, Debug)]
-pub struct Handshake {
+#[derive(BorshDeserialize)]
+pub struct HandshakeV1 {
     /// Protocol version.
     pub version: u32,
     /// Sender's peer id.
@@ -166,6 +167,26 @@ pub struct Handshake {
     pub edge_info: EdgeInfo,
 }
 
+#[derive(BorshSerialize, Serialize, PartialEq, Eq, Clone, Debug)]
+pub struct Handshake {
+    /// Protocol version.
+    pub version: u32,
+    /// Oldest version supported by this client
+    pub oldest_supported_version: u32,
+    /// Sender's peer id.
+    pub peer_id: PeerId,
+    /// Receiver's peer id.
+    pub target_peer_id: PeerId,
+    /// Sender's listening addr.
+    pub listen_port: Option<u16>,
+    /// Peer's chain information.
+    pub chain_info: PeerChainInfo,
+    /// Info for new edge.
+    pub edge_info: EdgeInfo,
+}
+#[derive(BorshDeserialize)]
+struct HandshakeV2(Handshake);
+
 impl Handshake {
     pub fn new(
         peer_id: PeerId,
@@ -175,13 +196,42 @@ impl Handshake {
         edge_info: EdgeInfo,
     ) -> Self {
         Handshake {
-            // TODO: figure out how we are going to indicate backward compatible versions of protocol.
-            version: FIRST_BACKWARD_COMPATIBLE_PROTOCOL_VERSION,
+            version: PROTOCOL_VERSION,
+            oldest_supported_version: OLDEST_BACKWARD_COMPATIBLE_PROTOCOL_VERSION,
             peer_id,
             target_peer_id,
             listen_port,
             chain_info,
             edge_info,
+        }
+    }
+}
+
+impl From<HandshakeV1> for Handshake {
+    fn from(handshake_old: HandshakeV1) -> Self {
+        Self {
+            version: handshake_old.version,
+            oldest_supported_version: handshake_old.version - 1,
+            peer_id: handshake_old.peer_id,
+            target_peer_id: handshake_old.target_peer_id,
+            listen_port: handshake_old.listen_port,
+            chain_info: handshake_old.chain_info,
+            edge_info: handshake_old.edge_info,
+        }
+    }
+}
+
+impl BorshDeserialize for Handshake {
+    fn deserialize(buf: &mut &[u8]) -> std::io::Result<Self> {
+        if buf.len() < 4 {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "Unexpected length of input"));
+        }
+        let version = u32::from_le_bytes(buf[..4].try_into().unwrap());
+
+        if version >= 31 {
+            HandshakeV2::try_from_slice(buf).map(|res| res.0)
+        } else {
+            HandshakeV1::try_from_slice(buf).map(Into::into)
         }
     }
 }
@@ -196,7 +246,7 @@ pub struct AnnounceAccountRoute {
 
 #[derive(BorshSerialize, BorshDeserialize, Serialize, PartialEq, Eq, Clone, Debug)]
 pub enum HandshakeFailureReason {
-    ProtocolVersionMismatch(u32),
+    ProtocolVersionMismatch { version: u32, oldest_supported_version: u32 },
     GenesisMismatch(GenesisId),
     InvalidTarget,
 }

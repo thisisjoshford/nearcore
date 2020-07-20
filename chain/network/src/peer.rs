@@ -16,7 +16,7 @@ use near_primitives::hash::CryptoHash;
 use near_primitives::network::PeerId;
 use near_primitives::unwrap_option_or_return;
 use near_primitives::utils::DisplayOption;
-use near_primitives::version::{FIRST_BACKWARD_COMPATIBLE_PROTOCOL_VERSION, PROTOCOL_VERSION};
+use near_primitives::version::{OLDEST_BACKWARD_COMPATIBLE_PROTOCOL_VERSION, PROTOCOL_VERSION};
 
 use crate::codec::{bytes_to_peer_message, peer_message_to_bytes, Codec};
 use crate::rate_counter::RateCounter;
@@ -638,8 +638,11 @@ impl StreamHandler<Result<Vec<u8>, ReasonForBan>> for Peer {
                     HandshakeFailureReason::GenesisMismatch(genesis) => {
                         warn!(target: "network", "Attempting to connect to a node ({}) with a different genesis block. Our genesis: {:?}, their genesis: {:?}", peer_info, self.genesis_id, genesis);
                     }
-                    HandshakeFailureReason::ProtocolVersionMismatch(version) => {
-                        warn!(target: "network", "Unable to connect to a node ({}) due to a network protocol version mismatch. Our version: {}, their: {}", peer_info, PROTOCOL_VERSION, version);
+                    HandshakeFailureReason::ProtocolVersionMismatch {
+                        version,
+                        oldest_supported_version,
+                    } => {
+                        warn!(target: "network", "Unable to connect to a node ({}) due to a network protocol version mismatch. Our version: {:?}, their: {:?}", peer_info, (PROTOCOL_VERSION, OLDEST_BACKWARD_COMPATIBLE_PROTOCOL_VERSION), (version, oldest_supported_version));
                     }
                     HandshakeFailureReason::InvalidTarget => {
                         debug!(target: "network", "Peer found was not what expected. Updating peer info with {:?}", peer_info);
@@ -663,11 +666,14 @@ impl StreamHandler<Result<Vec<u8>, ReasonForBan>> for Peer {
                     // Connection will be closed by a handshake timeout
                 }
 
-                if handshake.version < FIRST_BACKWARD_COMPATIBLE_PROTOCOL_VERSION {
+                if handshake.version < OLDEST_BACKWARD_COMPATIBLE_PROTOCOL_VERSION {
                     debug!(target: "network", "Received connection from node with different network protocol version.");
                     self.send_message(PeerMessage::HandshakeFailure(
                         self.node_info.clone(),
-                        HandshakeFailureReason::ProtocolVersionMismatch(handshake.version),
+                        HandshakeFailureReason::ProtocolVersionMismatch {
+                            version: PROTOCOL_VERSION,
+                            oldest_supported_version: OLDEST_BACKWARD_COMPATIBLE_PROTOCOL_VERSION,
+                        },
                     ));
                     return;
                     // Connection will be closed by a handshake timeout

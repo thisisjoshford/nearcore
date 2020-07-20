@@ -17,6 +17,7 @@ pub const DB_VERSION: DbVersion = 4;
 pub type ProtocolVersion = u32;
 
 /// Current latest version of the protocol.
-pub const PROTOCOL_VERSION: ProtocolVersion = 30;
+pub const PROTOCOL_VERSION: ProtocolVersion = 31;
 
-pub const FIRST_BACKWARD_COMPATIBLE_PROTOCOL_VERSION: ProtocolVersion = 29;
+/// Oldest supported version by this client.
+pub const OLDEST_BACKWARD_COMPATIBLE_PROTOCOL_VERSION: ProtocolVersion = 29;
