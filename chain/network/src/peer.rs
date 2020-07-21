@@ -666,8 +666,8 @@ impl StreamHandler<Result<Vec<u8>, ReasonForBan>> for Peer {
                     // Connection will be closed by a handshake timeout
                 }
 
-                if handshake.version < OLDEST_BACKWARD_COMPATIBLE_PROTOCOL_VERSION {
-                    debug!(target: "network", "Received connection from node with different network protocol version.");
+                if handshake.version < OLDEST_BACKWARD_COMPATIBLE_PROTOCOL_VERSION || PROTOCOL_VERSION < handshake.oldest_supported_version {
+                    debug!(target: "network", "Received connection from node with incompatible network protocol version.");
                     self.send_message(PeerMessage::HandshakeFailure(
                         self.node_info.clone(),
                         HandshakeFailureReason::ProtocolVersionMismatch {
