@@ -153,17 +153,22 @@ pub enum PeerStatus {
 
 #[derive(BorshDeserialize)]
 pub struct HandshakeV1 {
-    /// Protocol version.
     pub version: u32,
-    /// Sender's peer id.
     pub peer_id: PeerId,
-    /// Receiver's peer id.
     pub target_peer_id: PeerId,
-    /// Sender's listening addr.
     pub listen_port: Option<u16>,
-    /// Peer's chain information.
     pub chain_info: PeerChainInfo,
-    /// Info for new edge.
+    pub edge_info: EdgeInfo,
+}
+
+#[derive(BorshSerialize, BorshDeserialize, Serialize, PartialEq, Eq, Clone, Debug)]
+pub struct HandshakeV2 {
+    pub version: u32,
+    pub oldest_supported_version: u32,
+    pub peer_id: PeerId,
+    pub target_peer_id: PeerId,
+    pub listen_port: Option<u16>,
+    pub chain_info: PeerChainInfo,
     pub edge_info: EdgeInfo,
 }
 
@@ -184,8 +189,6 @@ pub struct Handshake {
     /// Info for new edge.
     pub edge_info: EdgeInfo,
 }
-#[derive(BorshDeserialize)]
-struct HandshakeV2(Handshake);
 
 impl Handshake {
     pub fn new(
@@ -221,6 +224,20 @@ impl From<HandshakeV1> for Handshake {
     }
 }
 
+impl From<HandshakeV2> for Handshake {
+    fn from(handshake_old: HandshakeV2) -> Self {
+        Self {
+            version: handshake_old.version,
+            oldest_supported_version: handshake_old.oldest_supported_version,
+            peer_id: handshake_old.peer_id,
+            target_peer_id: handshake_old.target_peer_id,
+            listen_port: handshake_old.listen_port,
+            chain_info: handshake_old.chain_info,
+            edge_info: handshake_old.edge_info,
+        }
+    }
+}
+
 impl BorshDeserialize for Handshake {
     fn deserialize(buf: &mut &[u8]) -> std::io::Result<Self> {
         if buf.len() < 4 {
@@ -229,7 +246,7 @@ impl BorshDeserialize for Handshake {
         let version = u32::from_le_bytes(buf[..4].try_into().unwrap());
 
         if version >= 31 {
-            HandshakeV2::try_from_slice(buf).map(|res| res.0)
+            HandshakeV2::try_from_slice(buf).map(Into::into)
         } else {
             HandshakeV1::try_from_slice(buf).map(Into::into)
         }
